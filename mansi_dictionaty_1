@@ -1,0 +1,64 @@
+import pandas as pd
+import re
+
+def extract_data(text):
+    data = []
+    lines = text.readlines()
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        if '!' in line and '(' in line and ')' in line and ';' not in line:
+            parts = line.split(')', 1)
+            meaning_part = parts[0] + ')'
+            mansi_part = parts[1].strip() if len(parts) > 1 else ''
+            
+            main_meaning = meaning_part.split('!')[0].strip()
+            
+            clarification = re.search(r'\((.*?)\)', meaning_part)
+            clarification_text = clarification.group(1) if clarification else ''
+            
+            full_meaning = f"{main_meaning} ({clarification_text})" if clarification_text else main_meaning
+            
+            mansi_words = [w.strip() for w in mansi_part.split(',') if w.strip()]
+            
+            for word in mansi_words:
+                data.append([full_meaning, word, None] + [None]*14)
+
+        elif ';' in line and '(' in line and ')' in line:
+            main_meaning = line.split()[0]
+            parts = [p.strip() for p in line.split(';')]
+            
+            for part in parts:
+                if not part:
+                    continue
+                
+                if '(' in part and ')' in part:
+                    clarification_start = part.find('(')
+                    clarification_end = part.find(')')
+                    clarification = part[clarification_start+1:clarification_end]
+                    mansi_word_part = part[clarification_end+1:].strip()
+                    
+                    current_meaning = f"{main_meaning} ({clarification})"
+                else:
+                    mansi_word_part = part[len(main_meaning):].strip()
+                    current_meaning = main_meaning
+                
+                for word in mansi_word_part.split(','):
+                    word = word.strip()
+                    if word:
+                        data.append([current_meaning, word, None] + [None]*14)
+                        
+
+    return data
+
+with open("t1.txt", mode='r', encoding='utf-8') as text:
+    data = extract_data(text)
+
+columns = ['Meaning', 'Word_mansi', 'Part_speech'] + [f'Extra_{i}' for i in range(1, 15)]
+df = pd.DataFrame(data, columns=columns)
+
+df.to_csv('mansi_dictionary1.csv', index=False)
+df.to_excel('mansi_dictionary1.xlsx', index=False)
