@@ -1,0 +1,132 @@
+import pandas as pd
+import re
+
+def process_endings(line):
+    pattern_ending = re.compile(r'(\S+)\s+(-ая|-яя|-ое|-ий|-ые|-ого|-ому|-ой|-ее|-ья)(?:\s*[,;]\s*(-ая|-яя|-ое|-ий|-ые|-ого|-ому|-ой|-ее|-ья))*')
+    match = pattern_ending.search(line)
+    if match:
+        base_word = match.group(1)
+        endings = [e for e in match.groups()[1:] if e is not None]
+        processed_parts = [base_word]
+        for ending in endings:
+            processed_parts.append(base_word[:-3] + ending[1:])
+        processed = ", ".join(processed_parts) + "!"
+        line = line[:match.start()] + processed + line[match.end():]
+    return line
+
+def extract_data(text):
+    data = []
+    lines = text.readlines()
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        line = process_endings(line)        
+        count_round_brace = line.count('(')
+        count_square_brace = line.count('[')
+        
+        if count_round_brace > 1 and ') 1.' in line:
+            pattern_meaning1 = re.compile(r'(.*?)\d+')
+            pattern_mansi_word = re.compile(r'\d+\.\s*\((.*?)\)\s*([^;]*)')
+            meaning_match = pattern_meaning1.search(line)
+            meaning = meaning_match.group(1).strip() if meaning_match else None
+            variants = pattern_mansi_word.findall(line)
+            if variants:
+                data.append([meaning, variants[0][1].strip(), None] + [None]*14)
+                for i in range(1, len(variants)):
+                    data.append([f"{meaning} ({variants[i][0].strip()})", variants[i][1].strip(), None] + [None]*14)
+            continue
+
+        if count_square_brace == 1 and count_round_brace == 0 and ';' not in line and '.' not in line and '!' not in line:
+            pattern_meaning1 = re.compile(r'\S+')
+            pattern_mansi_word = re.compile(r'\[(.*?)\]')
+            meaning = pattern_meaning1.findall(line)[0]
+            word_mansi = pattern_meaning1.findall(line)[1]
+            match_word_mansi2 = pattern_mansi_word.search(line)
+            if match_word_mansi2:
+                data.append([meaning, word_mansi, None] + [None]*14)
+                for variant in match_word_mansi2.group(1).split(','):
+                    data.append([meaning, variant.strip(), None] + [None]*14)
+            continue
+
+        if count_round_brace == 1 and count_square_brace == 0 and ';' not in line and ',' in line and '.' not in line and '!' not in line:
+            pattern_meaning1 = re.compile(r'\S+')
+            pattern_meaning2 = re.compile(r'\((.+?)\)')
+            pattern_mansi_word = re.compile(r'\)\s+(.+)')
+            meaning1 = pattern_meaning1.findall(line)[0]
+            meaning2 = pattern_meaning2.findall(line)[0]
+            mansi_match = pattern_mansi_word.search(line)
+            if mansi_match:
+                for word in mansi_match.group(1).split(','):
+                    data.append([f"{meaning1} ({meaning2})", word.strip(), None] + [None]*14)
+            continue
+
+        if count_round_brace == 1 and count_square_brace == 0 and ';' not in line and ',' not in line and '.' not in line and '!' not in line:
+            pattern_meaning1 = re.compile(r'\S+')
+            pattern_meaning2 = re.compile(r'\((.+?)\)')
+            pattern_mansi_word = re.compile(r'\)\s+(.+)')
+            meaning1 = pattern_meaning1.findall(line)[0]
+            meaning2 = pattern_meaning2.findall(line)[0]
+            word_mansi = pattern_mansi_word.findall(line)
+            if word_mansi:
+                data.append([f"{meaning1} ({meaning2})", word_mansi[0].strip(), None] + [None]*14)
+            continue
+
+        if '!' in line and count_round_brace == 0 and count_square_brace == 0 and ';' not in line and ',' in line and '.' not in line:
+            pattern_meaning = re.compile(r'(.+)\!')
+            pattern_mansi_word = re.compile(r'\!(.+)')
+            meaning_match = pattern_meaning.search(line)
+            mansi_match = pattern_mansi_word.search(line)
+            if meaning_match and mansi_match:
+                meaning = meaning_match.group(1).strip()
+                for word in mansi_match.group(1).split(','):
+                    data.append([meaning, word.strip(), None] + [None]*14)
+            continue
+
+        if count_round_brace == 0 and count_square_brace == 0 and ';' in line:
+            parts = line.split(';')
+            meaning = parts[0].split()[0]
+            word_mansi1 = parts[0].split()[1] if len(parts[0].split()) > 1 else None
+            if word_mansi1:
+                data.append([meaning, word_mansi1, None] + [None]*14)
+            for part in parts[1:]:
+                part = part.strip()
+                if part:
+                    split_part = part.split(maxsplit=1)
+                    if len(split_part) == 2:
+                        desc, mansi = split_part
+                        data.append([f"{meaning} ({desc})", mansi.strip(), None] + [None]*14)
+                    else:
+                        data.append([meaning, split_part[0].strip(), None] + [None]*14)
+            continue
+
+        if count_round_brace == 0 and count_square_brace == 0 and ',' in line and ';' not in line and '.' not in line and '!' not in line:
+            pattern_meaning1 = re.compile(r'\S+')
+            meanings = pattern_meaning1.findall(line)
+            if meanings:
+                meaning1 = meanings[0]
+                for word in meanings[1:]:
+                    data.append([meaning1, word.strip(), None] + [None]*14)
+            continue
+
+        if count_round_brace == 0 and count_square_brace == 0 and ';' not in line and ',' not in line and '.' not in line:
+            words = line.split()
+            if len(words) >= 2:
+                data.append([words[0], ' '.join(words[1:]), None] + [None]*14)
+            else:
+                data.append([line, "", None] + [None]*14)
+
+        else:
+            data.append([f"*{line}*"])
+
+    return data
+
+with open("mansi_dictionary.txt", mode='r', encoding='utf-8') as text:
+    data = extract_data(text)
+
+columns = ['Meaning', 'Word_mansi', 'Part_speech'] + [f'Extra_{i}' for i in range(1, 15)]
+df = pd.DataFrame(data, columns=columns)
+
+df.to_csv('mansi_dictionary.csv', index=False)
+df.to_excel('mansi_dictionary.xlsx', index=False)
